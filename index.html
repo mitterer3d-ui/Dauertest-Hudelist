@@ -44,9 +44,22 @@
   td, th { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; }
   th { color:var(--mut); font-weight:500; }
   footer { text-align:center; font-size:12px; color:var(--mut); margin-top:18px; }
+  #lock { position:fixed; inset:0; background:#fff; z-index:100; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; }
+  #lock img { width:70%; max-width:300px; margin-bottom:24px; }
+  #lock input { max-width:220px; text-align:center; font-size:28px; letter-spacing:8px; }
+  #lock button { max-width:220px; margin-top:12px; }
+  #lockErr { color:var(--red); font-size:14px; height:20px; margin-top:8px; }
 </style>
 </head>
 <body>
+
+<div id="lock">
+  <img id="lockLogo" alt="Mitterer Engineering and 3D Printing">
+  <div class="mut" style="margin-bottom:10px">Einlagen-Dauertest – bitte PIN eingeben</div>
+  <input id="lockPin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
+  <button id="lockBtn" class="main">Entsperren</button>
+  <div id="lockErr"></div>
+</div>
 
 <header>
   <div class="logos">
@@ -118,6 +131,38 @@
 </div>
 
 <footer>Mitterer Engineering and 3D Printing · der Hudelist – Mit Freude bewegen.</footer>
+
+<script>
+// ---- App-Sperre (PIN) ----
+// Hinweis: Das ist nur eine Hürde gegen neugierige Blicke. Der echte Schutz ist die Bluetooth-PIN am ESP32.
+const APP_PIN_HASH = "cfec7fcb9fc3d9d3a9f9b17613a10294202d07682c6365f8cc1ab5f29d6447cd";   // PIN: 4711  (neue PIN: Claude fragen oder Hash von "dauertest:<PIN>" mit SHA-256 bilden)
+async function sha(s) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("dauertest:" + s));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+(function () {
+  const lock = document.getElementById("lock");
+  document.getElementById("lockLogo").src = document.getElementById("logoM").src;
+  let ok = false; try { ok = sessionStorage.getItem("unlocked") === "1"; } catch {}
+  if (ok) { lock.remove(); return; }
+  let tries = 0, blockedUntil = 0;
+  const pinEl = document.getElementById("lockPin"), err = document.getElementById("lockErr");
+  async function tryUnlock() {
+    if (Date.now() < blockedUntil) { err.textContent = "Bitte kurz warten …"; return; }
+    if (await sha(pinEl.value) === APP_PIN_HASH) {
+      try { sessionStorage.setItem("unlocked", "1"); } catch {}
+      lock.remove();
+    } else {
+      tries++; pinEl.value = "";
+      if (tries >= 3) { blockedUntil = Date.now() + 30000; tries = 0; err.textContent = "3× falsch – 30 s gesperrt"; }
+      else err.textContent = "Falsche PIN";
+    }
+  }
+  document.getElementById("lockBtn").onclick = tryUnlock;
+  pinEl.addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
+  pinEl.focus();
+})();
+</script>
 
 <script>
 const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
