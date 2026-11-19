@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111">
+<title>Einlagen-Dauertest</title>
+<style>
+  :root { --bg:#111; --card:#1c1c1e; --txt:#f2f2f2; --mut:#9a9a9f; --acc:#2ecc71; --warn:#f1c40f; --bad:#e74c3c; --line:#2c2c2e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system, system-ui, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--txt); padding:16px; padding-bottom:40px; max-width:520px; margin-inline:auto; }
+  h1 { font-size:20px; margin:4px 0 14px; display:flex; justify-content:space-between; align-items:center; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); display:inline-block; margin-right:6px; }
+  .dot.on { background:var(--acc); }
+  .card { background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .big { font-size:46px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.1; }
+  .mut { color:var(--mut); font-size:13px; }
+  .row { display:flex; gap:10px; }
+  .row > * { flex:1; }
+  .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:13px; font-weight:600; background:var(--line); }
+  .badge.RUN { background:var(--acc); color:#000; } .badge.PAUSE { background:var(--warn); color:#000; } .badge.DONE { background:#3498db; color:#000; }
+  .bar { height:10px; background:var(--line); border-radius:6px; overflow:hidden; margin:10px 0 6px; }
+  .bar > div { height:100%; width:0; background:var(--acc); transition:width .3s; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; margin-top:8px; font-size:14px; }
+  .stats b { font-variant-numeric:tabular-nums; }
+  button { font:inherit; font-size:16px; font-weight:600; border:0; border-radius:12px; padding:14px 10px; background:var(--line); color:var(--txt); width:100%; }
+  button:disabled { opacity:.35; }
+  .go { background:var(--acc); color:#000; } .pa { background:var(--warn); color:#000; } .st { background:var(--bad); color:#fff; }
+  label { display:block; font-size:13px; color:var(--mut); margin:8px 0 4px; }
+  input, select { width:100%; font:inherit; font-size:16px; padding:11px; border-radius:10px; border:1px solid var(--line); background:#000; color:var(--txt); }
+  .presets { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .presets button { width:auto; padding:7px 11px; font-size:14px; font-weight:500; }
+  .warn { background:#3a2a00; color:var(--warn); padding:10px 12px; border-radius:10px; font-size:14px; margin-bottom:12px; display:none; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { padding:6px 4px; border-bottom:1px solid var(--line); text-align:left; }
+  th { color:var(--mut); font-weight:500; }
+</style>
+</head>
+<body>
+
+<h1><span>Einlagen-Dauertest</span><span class="mut"><span id="dot" class="dot"></span><span id="conn">getrennt</span></span></h1>
+
+<div id="nobt" class="warn">Dieser Browser unterstützt kein Web Bluetooth. Android: Chrome verwenden. iPhone: die App „Bluefy“ verwenden.</div>
+<div id="noen" class="warn">Freigabe-Schalter am Prüfstand ist AUS – Test kann nicht laufen.</div>
+
+<div class="card">
+  <button id="btnConn" class="go">Mit Prüfstand verbinden</button>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span id="name" class="mut">–</span><span id="state" class="badge">–</span>
+  </div>
+  <div class="big" id="count">0</div>
+  <div class="mut">von <span id="target">–</span> Zyklen (1 Zyklus = auf + ab)</div>
+  <div class="bar"><div id="prog"></div></div>
+  <div class="stats">
+    <span class="mut">Fortschritt</span><b id="pct">–</b>
+    <span class="mut">Takt</span><b id="rate">–</b>
+    <span class="mut">Laufzeit</span><b id="up">–</b>
+    <span class="mut">Restzeit ca.</span><b id="eta">–</b>
+    <span class="mut">Fertig ca.</span><b id="fin">–</b>
+  </div>
+</div>
+
+<div class="card row">
+  <button id="bStart" class="go" disabled>Start</button>
+  <button id="bPause" class="pa" disabled>Pause</button>
+  <button id="bStop" class="st" disabled>Stopp</button>
+</div>
+<div class="card">
+  <button id="bPdfNow" disabled>PDF-Bericht (aktueller Stand)</button>
+</div>
+
+<div class="card">
+  <b>Prüfparameter</b>
+  <label for="iName">Probe / Einlage</label>
+  <input id="iName" maxlength="16" placeholder="z. B. Einlage A Gr. 42">
+  <label for="iTarget">Zielzyklen (0 = unbegrenzt)</label>
+  <input id="iTarget" type="number" min="0" inputmode="numeric">
+  <div class="presets" id="presets"></div>
+  <div class="row">
+    <div><label for="iOn">Auf / Relais EIN (ms)</label><input id="iOn" type="number" min="50" inputmode="numeric"></div>
+    <div><label for="iOff">Ab / Relais AUS (ms)</label><input id="iOff" type="number" min="50" inputmode="numeric"></div>
+  </div>
+  <div class="mut" id="calc" style="margin-top:8px">–</div>
+  <label for="iNote">Bemerkung für den Bericht (nur am Handy)</label>
+  <input id="iNote" placeholder="z. B. Material PETG, Shore 85A, Last 80 kg">
+  <label for="iTester">Prüfer/in</label>
+  <input id="iTester" placeholder="Name">
+  <div style="margin-top:12px"><button id="bSend" disabled>Parameter übertragen</button></div>
+  <div style="margin-top:8px"><button id="bReset" disabled>Zähler zurücksetzen</button></div>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center"><b>Protokoll</b><span class="mut">auf diesem Handy</span></div>
+  <table><thead><tr><th>Datum</th><th>Probe</th><th>Zyklen</th><th>Status</th><th></th></tr></thead><tbody id="log"></tbody></table>
+  <div class="row" style="margin-top:10px">
+    <button id="bCsv">CSV exportieren</button>
+    <button id="bClr">Protokoll leeren</button>
+  </div>
+</div>
+
+<script>
+const SVC = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+const RX  = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const TX  = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+const $ = id => document.getElementById(id);
+
+let dev = null, rx = null, last = null, prevState = null, buf = "", formTouched = false;
+let queue = Promise.resolve();
+
+// ---- Speicher (try/catch, falls nicht verfügbar) ----
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+if (!navigator.bluetooth) { $("nobt").style.display = "block"; $("btnConn").disabled = true; }
+
+// ---- Presets Zielzyklen ----
+[1000, 10000, 50000, 100000, 250000, 500000, 1000000].forEach(n => {
+  const b = document.createElement("button");
+  b.textContent = n >= 1000000 ? (n/1e6) + " Mio." : n.toLocaleString("de-AT");
+  b.onclick = () => { $("iTarget").value = n; formTouched = true; calc(); };
+  $("presets").appendChild(b);
+});
+
+// ---- Verbindung ----
+$("btnConn").onclick = async () => {
+  if (dev && dev.gatt.connected) { dev.gatt.disconnect(); return; }
+  try {
+    dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
+    dev.addEventListener("gattserverdisconnected", onDisconnect);
+    await connect();
+  } catch (e) { if (e.name !== "NotFoundError") alertMsg("Verbindung fehlgeschlagen: " + e.message); }
+};
+
+async function connect() {
+  setConn("verbinde …", false);
+  const srv = await dev.gatt.connect();
+  const s = await srv.getPrimaryService(SVC);
+  rx = await s.getCharacteristic(RX);
+  const tx = await s.getCharacteristic(TX);
+  await tx.startNotifications();
+  tx.addEventListener("characteristicvaluechanged", e => onData(new TextDecoder().decode(e.target.value)));
+  setConn(dev.name || "verbunden", true);
+  formTouched = false;
+  send("STATUS");
+}
+
+async function onDisconnect() {
+  setConn("getrennt – verbinde neu …", false);
+  for (let i = 0; i < 5 && dev && !dev.gatt.connected; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    try { await connect(); return; } catch {}
+  }
+  setConn("getrennt", false);
+}
+
+function setConn(txt, ok) {
+  $("conn").textContent = txt;
+  $("dot").className = "dot" + (ok ? " on" : "");
+  $("btnConn").textContent = ok ? "Trennen" : "Mit Prüfstand verbinden";
+  ["bStart","bPause","bStop","bSend","bReset","bPdfNow"].forEach(id => $(id).disabled = !ok);
+}
+
+function send(cmd) {
+  queue = queue.then(async () => {
+    if (!rx) return;
+    try { await rx.writeValue(new TextEncoder().encode(cmd)); } catch (e) { console.log(e); }
+  });
+  return queue;
+}
+
+// ---- Daten vom ESP32 ----
+function onData(chunk) {
+  buf += chunk;
+  const s = buf.indexOf("{"), e = buf.indexOf("}", s);
+  if (s < 0 || e < 0) { if (buf.length > 500) buf = ""; return; }
+  const json = buf.slice(s, e + 1); buf = buf.slice(e + 1);
+  try { render(JSON.parse(json)); } catch {}
+}
+
+function fmtDur(sec) {
+  if (!isFinite(sec) || sec < 0) return "–";
+  sec = Math.round(sec);
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  if (d) return `${d} d ${h} h ${m} min`;
+  if (h) return `${h} h ${m} min`;
+  return `${m} min ${s} s`;
+}
+const nf = n => Number(n).toLocaleString("de-AT");
+
+function render(d) {
+  last = d;
+  const labels = { RUN:"läuft", PAUSE:"pausiert", DONE:"fertig", IDLE:"bereit" };
+  $("state").textContent = labels[d.st] || d.st;
+  $("state").className = "badge " + d.st;
+  $("name").textContent = d.n;
+  $("count").textContent = nf(d.c);
+  $("target").textContent = d.t ? nf(d.t) : "∞";
+  const pct = d.t ? Math.min(100, d.c / d.t * 100) : 0;
+  $("prog").style.width = pct + "%";
+  $("pct").textContent = d.t ? pct.toFixed(1) + " %" : "–";
+  const cyc = (d.on + d.off) / 1000;
+  $("rate").textContent = (60 / cyc).toFixed(1) + " Zyklen/min";
+  $("up").textContent = fmtDur(d.up);
+  const rest = d.t ? (d.t - d.c) * cyc : NaN;
+  $("eta").textContent = d.t && d.st !== "DONE" ? fmtDur(rest) : "–";
+  $("fin").textContent = d.t && d.st === "RUN" ? new Date(Date.now() + rest * 1000).toLocaleString("de-AT", { weekday:"short", day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : "–";
+  $("noen").style.display = d.en ? "none" : "block";
+  $("bStart").disabled = d.st === "RUN" || d.st === "DONE" || !d.en;
+  $("bPause").disabled = d.st !== "RUN";
+  $("bReset").disabled = d.st === "RUN";
+
+  if (!formTouched) {
+    $("iName").value = d.n; $("iTarget").value = d.t; $("iOn").value = d.on; $("iOff").value = d.off; calc();
+  }
+  if (prevState && prevState !== "DONE" && d.st === "DONE") addLog(d, "Ziel erreicht");
+  prevState = d.st;
+}
+
+// ---- Bedienung ----
+$("bStart").onclick = () => {
+  if (formTouched && !confirm("Geänderte Parameter wurden noch nicht übertragen. Trotzdem starten?")) return;
+  send("START");
+};
+$("bPause").onclick = () => send("PAUSE");
+$("bStop").onclick = () => {
+  if (!confirm("Test beenden? Der Zählerstand bleibt erhalten.")) return;
+  if (last) addLog(last, "abgebrochen");
+  send("STOP");
+};
+$("bReset").onclick = () => { if (confirm("Zähler wirklich auf 0 setzen?")) send("RESET"); };
+
+["iName","iTarget","iOn","iOff"].forEach(id => $(id).addEventListener("input", () => { formTouched = true; calc(); }));
+
+function calc() {
+  const on = +$("iOn").value || 0, off = +$("iOff").value || 0, t = +$("iTarget").value || 0;
+  const cyc = (on + off) / 1000;
+  if (!cyc) { $("calc").textContent = "–"; return; }
+  $("calc").textContent = `${(60 / cyc).toFixed(1)} Zyklen/min · ${(1 / cyc).toFixed(2)} Hz` + (t ? ` · Dauer für ${nf(t)} Zyklen: ${fmtDur(t * cyc)}` : "");
+}
+
+$("bSend").onclick = async () => {
+  const on = Math.max(50, +$("iOn").value || 500), off = Math.max(50, +$("iOff").value || 500);
+  send("NAME:" + $("iName").value.trim().slice(0, 16));
+  send("TARGET:" + Math.max(0, Math.floor(+$("iTarget").value || 0)));
+  send("ON:" + on);
+  await send("OFF:" + off);
+  formTouched = false;
+  send("STATUS");
+};
+
+// ---- Protokoll ----
+function addLog(d, status) {
+  const log = store.get("log", []);
+  log.unshift({ ts: new Date().toISOString(), n: d.n, c: d.c, t: d.t, on: d.on, off: d.off, up: d.up, status,
+                note: $("iNote").value.trim(), tester: $("iTester").value.trim() });
+  store.set("log", log.slice(0, 200));
+  drawLog();
+}
+function drawLog() {
+  const log = store.get("log", []);
+  $("log").innerHTML = log.length ? log.map((l, i) =>
+    `<tr><td>${new Date(l.ts).toLocaleDateString("de-AT")}</td><td>${esc(l.n)}</td><td>${nf(l.c)}${l.t ? " / " + nf(l.t) : ""}</td><td>${l.status}</td>` +
+    `<td><button style="padding:5px 8px;font-size:13px" onclick="pdfFromLog(${i})">PDF</button></td></tr>`
+  ).join("") : `<tr><td colspan="5" class="mut">Noch keine abgeschlossenen Tests.</td></tr>`;
+}
+
+// ---- Bemerkung / Prüfer am Handy merken ----
+$("iNote").value = store.get("note", "");
+$("iTester").value = store.get("tester", "");
+$("iNote").addEventListener("input", () => store.set("note", $("iNote").value));
+$("iTester").addEventListener("input", () => store.set("tester", $("iTester").value));
+
+// ---- PDF-Bericht (jsPDF wird bei Bedarf geladen) ----
+let jsPdfLoading = null;
+function loadJsPdf() {
+  if (window.jspdf) return Promise.resolve();
+  if (!jsPdfLoading) jsPdfLoading = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = res; s.onerror = () => { jsPdfLoading = null; rej(new Error("jsPDF konnte nicht geladen werden (Internet nötig)")); };
+    document.head.appendChild(s);
+  });
+  return jsPdfLoading;
+}
+
+$("bPdfNow").onclick = () => {
+  if (!last) return;
+  makePdf({ ts: new Date().toISOString(), n: last.n, c: last.c, t: last.t, on: last.on, off: last.off, up: last.up,
+            status: { RUN:"läuft noch", PAUSE:"pausiert", DONE:"Ziel erreicht", IDLE:"gestoppt" }[last.st] || last.st,
+            note: $("iNote").value.trim(), tester: $("iTester").value.trim() });
+};
+window.pdfFromLog = i => { const l = store.get("log", [])[i]; if (l) makePdf(l); };
+
+async function makePdf(r) {
+  try { await loadJsPdf(); } catch (e) { alert(e.message); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const end = new Date(r.ts), start = new Date(end - (r.up || 0) * 1000);
+  const cyc = (r.on + r.off) / 1000;
+  const pct = r.t ? Math.min(100, r.c / r.t * 100) : null;
+  const dt = d => d.toLocaleString("de-AT", { day:"2-digit", month:"2-digit", year:"numeric", hour:"2-digit", minute:"2-digit" });
+  let y = 20;
+
+  doc.setFont("helvetica", "bold"); doc.setFontSize(18);
+  doc.text("Prüfbericht – Einlagen-Dauertest", 20, y); y += 7;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(110);
+  doc.text("Erstellt am " + dt(new Date()), 20, y); doc.setTextColor(0); y += 4;
+  doc.setDrawColor(180); doc.line(20, y, 190, y); y += 10;
+
+  const section = t => { doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text(t, 20, y); y += 7; doc.setFont("helvetica", "normal"); doc.setFontSize(11); };
+  const row = (k, v) => { doc.setTextColor(90); doc.text(k, 20, y); doc.setTextColor(0); doc.text(String(v), 80, y); y += 6.5; };
+
+  section("Probe");
+  row("Bezeichnung", r.n || "–");
+  row("Prüfer/in", r.tester || "–");
+  y += 3;
+
+  section("Prüfparameter");
+  row("Belastung (auf, Relais EIN)", r.on + " ms");
+  row("Entlastung (ab, Relais AUS)", r.off + " ms");
+  row("Zyklusdauer", cyc.toFixed(2) + " s  (1 Zyklus = auf + ab)");
+  row("Prüffrequenz", (1 / cyc).toFixed(2) + " Hz  /  " + (60 / cyc).toFixed(1) + " Zyklen/min");
+  row("Zielzyklen", r.t ? nf(r.t) : "unbegrenzt");
+  y += 3;
+
+  section("Ergebnis");
+  row("Erreichte Zyklen", nf(r.c));
+  row("Status", r.status);
+  row("Reine Prüfzeit", fmtDur(r.up));
+  row("Beginn (ca.)", dt(start));
+  row("Ende / Stand", dt(end));
+  if (pct !== null) {
+    row("Fortschritt", pct.toFixed(1) + " %");
+    doc.setFillColor(230); doc.rect(80, y - 3, 100, 5, "F");
+    doc.setFillColor(46, 204, 113); doc.rect(80, y - 3, pct, 5, "F");
+    y += 8;
+  }
+  y += 3;
+
+  section("Bemerkung / Befund");
+  const lines = doc.splitTextToSize(r.note || "–", 170);
+  doc.text(lines, 20, y); y += lines.length * 5.5 + 4;
+  doc.setDrawColor(200);
+  for (let i = 0; i < 4; i++) { y += 8; doc.line(20, y, 190, y); }   // Linien für handschriftlichen Befund
+
+  y = Math.max(y + 25, 250);
+  doc.setDrawColor(0);
+  doc.line(20, y, 90, y); doc.line(120, y, 190, y);
+  doc.setFontSize(9); doc.setTextColor(90);
+  doc.text("Ort, Datum", 20, y + 5); doc.text("Unterschrift Prüfer/in", 120, y + 5);
+  doc.text("Beginn ist aus der reinen Prüfzeit zurückgerechnet; Pausen sind darin nicht enthalten.", 20, 287);
+
+  const safe = (r.n || "Probe").replace(/[^\wäöüÄÖÜß-]+/g, "_");
+  doc.save(`Pruefbericht_${safe}_${end.toISOString().slice(0, 10)}.pdf`);
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+
+$("bCsv").onclick = () => {
+  const log = store.get("log", []);
+  const rows = [["Datum","Probe","Zyklen","Ziel","Auf_ms","Ab_ms","Laufzeit_s","Status"],
+    ...log.map(l => [new Date(l.ts).toLocaleString("de-AT"), l.n, l.c, l.t, l.on, l.off, l.up, l.status])];
+  const csv = "﻿" + rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(";")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "einlagen_dauertest.csv";
+  a.click();
+};
+$("bClr").onclick = () => { if (confirm("Protokoll löschen?")) { store.set("log", []); drawLog(); } };
+
+function alertMsg(m) { $("conn").textContent = m; }
+drawLog();
+</script>
+</body>
+</html>
